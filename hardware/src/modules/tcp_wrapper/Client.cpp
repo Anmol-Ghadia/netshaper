@@ -1,155 +1,103 @@
-//
-// Created by ubuntu on 12/29/22.
-//
-
 #include "Client.h"
-
-#include <utility>
-#include <netdb.h>
-#include <arpa/inet.h>
-#include <sys/wait.h>
-#include <sstream>
-#include <thread>
 #include <cstring>
-#include <iomanip>
+#include <sys/un.h>
+#include <thread>
+#include <fcntl.h>
+#include <errno.h>
 
 namespace TCP {
-  Client::Client(const std::string &remoteHost, int remotePort,
-                 std::function<void(TCP::Client *,
-                                    uint8_t *buffer, size_t length,
-                                    connectionStatus connStatus)>
-                 onReceiveFunc, logLevels level)
-      : logLevel(level), remoteSocket(-1) {
-    onReceive = std::move(onReceiveFunc);
 
-    this->remoteHost = remoteHost;
-    this->remotePort = remotePort;
+    Client::Client(const std::string &remoteHost, int remotePort,
+            std::function<void(Client *, uint8_t *, size_t, connectionStatus)> onReceiveFunc,
+            logLevels level)
+        : remoteHost(remoteHost), remotePort(remotePort), logLevel(level), onReceive(onReceiveFunc) {
 
-    int error = connectToRemote();
-    if (error < 0) {
-      close(remoteSocket);
-      switch (error) {
-        case CLIENT_RESOLVE_ERROR:
-          throw std::runtime_error("Could not resolve " + remoteHost + ":" +
-                                   std::to_string(remotePort));
-        case CLIENT_SOCKET_ERROR:
-          throw std::runtime_error("Could not open socket to " + remoteHost +
-                                   ":" +
-                                   std::to_string(remotePort));
-        case CLIENT_CONNECT_ERROR:
-          throw std::runtime_error("Could not connect to " + remoteHost + ":" +
-                                   std::to_string(remotePort));
-        default:
-          throw std::runtime_error("Unhandled Exception");
-      }
+            remoteSocket = connectToRemote();
+            if (remoteSocket < 0) {
+                log(ERROR, "Failed to connect to remote Unix socket.");
+                return;
+            }
+
+            log(DEBUG, "Connected to Unix domain socket: " + remoteHost);
+
+            // Start receiving data in a separate thread
+            std::thread([this]() { startReceiving(); }).detach();
+        }
+
+    Client::~Client() {
+        if (remoteSocket != -1) {
+            close(remoteSocket);
+        }
     }
 
-    std::thread receive(&Client::startReceiving, this);
-    receive.detach();
-#ifdef DEBUGGING
-    log(DEBUG, "Client initialised");
-#endif
-  }
-
-  Client::~Client() {
-    close(remoteSocket);
-#ifdef DEBUGGING
-    log(DEBUG, "Client at socket: " + std::to_string(remoteSocket)
-               + " destructed");
-#endif
-  }
-
-  int Client::connectToRemote() {
-    struct addrinfo hints{}, *res = nullptr;
-
-    // getaddrinfo requires the port in the c_string format
-    char portString[6];
-    sprintf(portString, "%d", remotePort);
-
-    hints.ai_flags = AI_NUMERICSERV; // numeric service (port) number
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-
-    if (getaddrinfo(remoteHost.c_str(), portString, &hints, &res) != 0) {
-      errno = EFAULT;
-      return CLIENT_RESOLVE_ERROR;
+    ssize_t Client::sendData(uint8_t *buffer, size_t length) {
+        ssize_t bytesSent = send(remoteSocket, buffer, length, 0);
+        if (bytesSent < 0) {
+            log(ERROR, "Send failed: " + std::string(strerror(errno)));
+        }
+        return bytesSent;
     }
 
-    if ((remoteSocket = socket(res->ai_family, res->ai_socktype,
-                               res->ai_protocol)
-        ) <
-        0) {
-      return CLIENT_SOCKET_ERROR;
+    int Client::connectToRemote() {
+        int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (sock < 0) {
+            log(ERROR, "Socket creation failed: " + std::string(strerror(errno)));
+            return CLIENT_SOCKET_ERROR;
+        }
+
+        sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+
+        // Use the remoteHost as the Unix socket path
+        strncpy(addr.sun_path, remoteHost.c_str(), sizeof(addr.sun_path) - 1);
+
+        if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+            log(ERROR, "Connect failed: " + std::string(strerror(errno)));
+            close(sock);
+            return CLIENT_CONNECT_ERROR;
+        }
+
+        return sock;
     }
 
-    if (connect(remoteSocket, res->ai_addr, res->ai_addrlen) < 0) {
-      return CLIENT_CONNECT_ERROR;
+    void Client::startReceiving() {
+        uint8_t buffer[BUF_SIZE];
+
+        while (true) {
+            ssize_t bytesRead = recv(remoteSocket, buffer, sizeof(buffer), 0);
+            if (bytesRead > 0) {
+                onReceive(this, buffer, bytesRead, connectionStatus::ONGOING);
+            } else if (bytesRead == 0) {
+                log(DEBUG, "Connection closed by peer.");
+                onReceive(this, buffer, 0, connectionStatus::FIN);
+                break;
+            } else {
+                log(ERROR, "Receive failed: " + std::string(strerror(errno)));
+                onReceive(this, buffer, 0, connectionStatus::FIN);
+                break;
+            }
+        }
+
+        close(remoteSocket);
+        remoteSocket = -1;
     }
 
-    if (res != nullptr) {
-      freeaddrinfo(res);
+    void Client::log(logLevels level, const std::string &message) {
+        if (level <= logLevel) {
+            switch (level) {
+                case ERROR:
+                    std::cerr << "[ERROR] " << message << std::endl;
+                    break;
+                case WARNING:
+                    std::cerr << "[WARNING] " << message << std::endl;
+                    break;
+                case DEBUG:
+                    std::cout << "[DEBUG] " << message << std::endl;
+                    break;
+            }
+        }
     }
 
-#ifdef DEBUGGING
-    std::stringstream ss;
-    ss << "Connected to remote address " << remoteHost << ":" << remotePort <<
-       " at socket " << remoteSocket;
-    log(DEBUG, ss.str());
-#endif
-    return 0;
-  }
+} // namespace TCP
 
-  void Client::startReceiving() {
-    ssize_t bytesReceived;  // Number of bytes received
-    uint8_t buffer[BUF_SIZE];
-
-    // Read from fromSocket and send to toSocket
-    while ((bytesReceived = recv(remoteSocket, buffer, BUF_SIZE, 0)) > 0) {
-#ifdef DEBUGGING
-      std::stringstream ss;
-      ss << "Received data on socket: " << remoteSocket;
-      log(DEBUG, ss.str());
-#endif
-      onReceive(this, buffer, bytesReceived, ONGOING);
-    }
-
-    if (bytesReceived < 0) {
-      log(ERROR, "Server at " + remoteHost + ":" + std::to_string(remotePort) +
-                 " disconnected abruptly with error " + strerror(errno));
-    }
-    onReceive(this, nullptr, 0, FIN);
-    shutdown(remoteSocket, SHUT_RD);
-  }
-
-  ssize_t Client::sendData(uint8_t *buffer, size_t length) {
-#ifdef DEBUGGING
-    std::stringstream ss;
-    ss << "Sending data to socket: " << remoteSocket;
-    log(DEBUG, ss.str());
-#endif
-    auto bytesSent = send(remoteSocket, buffer, length, 0);
-    return bytesSent;
-  }
-
-  void Client::log(logLevels level, const std::string &log) {
-    auto time = std::time(nullptr);
-    auto localTime = std::localtime(&time);
-    std::string levelStr;
-    switch (level) {
-      case DEBUG:
-        levelStr = "TcpClient:DEBUG: ";
-        break;
-      case ERROR:
-        levelStr = "TcpClient:ERROR: ";
-        break;
-      case WARNING:
-        levelStr = "TcpClient:WARNING: ";
-        break;
-
-    }
-    if (logLevel >= level) {
-      std::cerr << std::put_time(localTime, "[%H:%M:%S] ") << levelStr
-                << log << std::endl;
-    }
-  }
-}
