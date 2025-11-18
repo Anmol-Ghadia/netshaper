@@ -63,6 +63,7 @@ docker run \
   -e CONFIG="$CONFIG" \
   -e PEER_PORT=$peer_port \
   --name "peer1-$(basename $videoMPD .mpd)-${i}" \
+  -v "/tmp/:/root/tmp" \
   -v "$(pwd)/traces/peer1/$i:/root/traces" \
   -v "$(pwd)/peer1_config.json:/root/config.json" \
   --network host \

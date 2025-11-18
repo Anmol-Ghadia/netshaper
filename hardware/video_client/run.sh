@@ -36,7 +36,7 @@ docker run \
   -e VIDEO="$videoMPD" \
   -e PCAP="$(basename $videoMPD .mpd)" \
   -e TIMEOUT="$TIMEOUT" \
-  -e SERVER="192.168.1.2:$port" \
+  -e SERVER="198.162.54.204:5555" \
   -e MAX_CAPTURE_SIZE="$MAX_CAPTURE_SIZE" \
   -v "$(pwd)/traces/client/$i:/root/traces" \
   amirsabzi/netshaper:video-client

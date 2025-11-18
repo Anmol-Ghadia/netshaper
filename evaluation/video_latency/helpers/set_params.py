@@ -136,6 +136,7 @@ def main():
 
     # Modify Peer1 Config file
     
+    peer1_config["logLevel"] = "Debug"
     peer1_config["maxClients"] = max_client_num + 2
     peer1_config["shapedClient"]["noiseMultiplier"] = noise_multiplier_peer1 
     peer1_config["shapedClient"]["sensitivity"] = experiment_config["sensitivity_peer1"]
@@ -146,6 +147,7 @@ def main():
     
     
     # Modify Peer2 Config file
+    peer2_config["logLevel"] = "Debug"
     peer2_config["maxStreamsPerPeer"] = max_client_num + 2
     peer2_config["shapedServer"]["noiseMultiplier"] = noise_multiplier_peer2
     peer2_config["shapedServer"]["sensitivity"] = experiment_config["sensitivity_peer2"]

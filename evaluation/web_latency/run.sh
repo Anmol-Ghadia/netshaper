@@ -16,20 +16,20 @@ OFF='\033[0m'
 # ************************************************************
 
 # SSH Host and Username for server-side middlebox (peer2)
-peer2_ssh_host="desh03"
-peer2_ssh_username="reviewer"
+peer2_ssh_host="desh02"
+peer2_ssh_username="aghadia"
 
 # SSH Host and Username for client-side middlebox (peer1)
-peer1_ssh_host="desh02"
-peer1_ssh_username="reviewer"
+peer1_ssh_host="desh03"
+peer1_ssh_username="aghadia"
 
-peer1_IP="192.168.1.2"
+peer1_IP="198.162.54.205"
 
 # NetShaper directory at server-side middlebox (peer2)
-peer2_netshaper_dir="/home/reviewer/workspace/netshaper"
+peer2_netshaper_dir="/home/aghadia/workspace-2/netshaper"
 
 # NetShaper directory at client-side middlebox (peer1)
-peer1_netshaper_dir="/home/reviewer/workspace/netshaper"
+peer1_netshaper_dir="/home/aghadia/workspace-2/netshaper"
 
 # Config directory
 config_file_dir="$(pwd)/configs/web_latency.json"
