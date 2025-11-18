@@ -32,16 +32,12 @@ namespace TCP {
 
     // Initialise localSocket to -1 (invalid value)
     this->localSocket = -1;
-#ifdef DEBUGGING
-    log(DEBUG, "Server initialised");
-#endif
+    log(ERROR, "Server initialised");
   }
 
   Server::~Server() {
     close(localSocket);
-#ifdef DEBUGGING
-    log(DEBUG, "Server destructed");
-#endif
+    log(ERROR, "Server destructed");
     exit(0);
   }
 
@@ -63,12 +59,9 @@ namespace TCP {
         throw std::runtime_error("Could not start listening on given address "
                                  "and port");
       default:
-#ifdef DEBUGGING
-        log(DEBUG, "Started listening on " + bindAddr + ":"
+        log(ERROR, "Started listening on " + bindAddr + ":"
                    + std::to_string(localPort));
-#endif
-        std::thread loop(&Server::serverLoop, this);
-        loop.detach();
+        Server::serverLoop();
     }
 
   }
@@ -97,8 +90,7 @@ namespace TCP {
       return CLIENT_RESOLVE_ERROR;
     }
 
-    int serverSocket = socket(res->ai_family, res->ai_socktype,
-                              res->ai_protocol);
+    int serverSocket = socket(res->ai_family, SOCK_DGRAM, 0);
     if (serverSocket < 0) {
       return SERVER_SOCKET_ERROR;
     }
@@ -114,16 +106,9 @@ namespace TCP {
       return SERVER_BIND_ERROR;
     }
 
-    if (listen(serverSocket, BACKLOG) < 0) {
-      return SERVER_LISTEN_ERROR;
-    }
-
     if (res != nullptr) {
       freeaddrinfo(res);
     }
-#ifdef DEBUGGING
-    log(DEBUG, "Server running on socket " + std::to_string(serverSocket));
-#endif
     return serverSocket;
 
   }
@@ -154,21 +139,33 @@ namespace TCP {
 
   [[noreturn]] void Server::serverLoop() {
     struct sockaddr_storage clientAddress{};
-    socklen_t addrLen = sizeof(clientAddress);
-#ifdef DEBUGGING
-    log(DEBUG, "Starting Server loop");
-#endif
+    uint8_t buffer[BUF_SIZE];
+    socklen_t addrLen;
+    log(ERROR, "Starting Server loop");
     while (true) {
-      int clientSocket =
-          accept(localSocket, (struct sockaddr *) &clientAddress,
-                 &addrLen);
+ 	addrLen = sizeof(clientAddress);
 
+	// Receive a single datagram
+	    log(ERROR, "block waiting on socket");
+	size_t bytes = recvfrom(localSocket,
+		buffer,
+		sizeof(buffer),
+		0,
+		(struct sockaddr*)&clientAddress,
+		&addrLen);
+	    log(ERROR, "received something on socket");
+	if (bytes == 0) {
+		log(ERROR, "recvfrom() failed");
+		continue;
+	}
 
       try {
         auto address = getAddress(*(struct sockaddr *) (&clientAddress));
-        std::thread clientHandler(&Server::handleClient, this, clientSocket,
-                                  address);
-        clientHandler.detach();
+	log(ERROR, "received message from client addr: " + address);
+	onReceive(localSocket, address, nullptr, 0, SYN);
+	onReceive(localSocket, address, buffer, bytes, ONGOING);
+	onReceive(localSocket, address, nullptr, 0, FIN);
+
       } catch (...) {
         log(ERROR, "Could not parse client address");
       }
@@ -176,48 +173,19 @@ namespace TCP {
 
   }
 
+  // checks if queues exist, if not close connection. We can skip this
   void Server::handleClient(int clientSocket, std::string clientAddress) {
-#ifdef DEBUGGING
-    log(DEBUG, "Client at " + clientAddress + " connected on socket " +
-               std::to_string(clientSocket));
-#endif
-    if (!onReceive(clientSocket, clientAddress, nullptr, 0, SYN)) {
-      // No queues for this client. Don't receive data from it
-      close(clientSocket);
-      return;
-    }
-    // Read data from the client socket
-    receiveData(clientSocket, clientAddress);
+	  (void) clientSocket;
+	  (void) clientAddress;
   }
 
   void Server::receiveData(int socket, std::string &clientAddress) {
-    ssize_t bytesReceived;  // Number of bytes received
-    uint8_t buffer[BUF_SIZE];
-
-    // Read from fromSocket and send to toSocket
-    while ((bytesReceived = recv(socket, buffer, BUF_SIZE, 0)) > 0) {
-#ifdef DEBUGGING
-      log(DEBUG, "Data received on socket " + std::to_string(socket));
-#endif
-      onReceive(socket, clientAddress, buffer, bytesReceived, ONGOING);
-    }
-
-    if (bytesReceived < 0) {
-      log(ERROR, "Client at " + clientAddress + " disconnected abruptly with "
-                                                "error " + strerror(errno));
-    }
-    // Stop other processes from using these sockets
-#ifdef DEBUGGING
-    log(DEBUG, "Shutting down read on socket " + std::to_string(socket));
-#endif
-    shutdown(socket, SHUT_RD);
-    onReceive(socket, clientAddress, nullptr, 0, FIN);
+	  (void) socket;
+	  (void) clientAddress;
   }
 
   ssize_t Server::sendData(int toSocket, uint8_t *buffer, size_t length) {
-#ifdef DEBUGGING
-    log(DEBUG, "Sending data on socket " + std::to_string(toSocket));
-#endif
+    log(ERROR, "Sending data on socket " + std::to_string(toSocket));
     auto bytesSent = send(toSocket, buffer, length, 0);
     return bytesSent;
   }
