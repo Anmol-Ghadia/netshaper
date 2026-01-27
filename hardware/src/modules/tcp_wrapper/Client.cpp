@@ -115,12 +115,11 @@ namespace TCP {
       ss << "Received data on socket: " << remoteSocket;
       log(DEBUG, ss.str());
 #endif
-    log(ERROR, "Data received on socket " + std::to_string(remoteSocket) + " of size: " + std::to_string(bytesReceived));
-    if (bytesReceived == 16) {
-        log(ERROR, "adding timestamp");
-        bytesReceived += 8;     // single timestamp
-        uint8_t *endOfBuffer = &buffer[8];
-        std::memset(endOfBuffer, ts, 8);
+    //log(ERROR, "Data received on socket " + std::to_string(remoteSocket) + " of size: " + std::to_string(bytesReceived));
+    if (bytesReceived == 40) {		// T5
+        // log(ERROR, "adding timestamp T5");
+        std::memcpy(buffer + bytesReceived, &ts, sizeof(uint64_t));
+	bytesReceived += sizeof(uint64_t);
     }
 
       onReceive(this, buffer, bytesReceived, ONGOING);
@@ -140,6 +139,15 @@ namespace TCP {
     ss << "Sending data to socket: " << remoteSocket;
     log(DEBUG, ss.str());
 #endif
+    uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
+        (std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    if (length == 32) {		// T4
+        // log(ERROR, "adding timestamp T4");
+        std::memcpy(buffer + length, &ts, sizeof(uint64_t));
+	length += sizeof(uint64_t);
+    }
+
     auto bytesSent = send(remoteSocket, buffer, length, 0);
     return bytesSent;
   }

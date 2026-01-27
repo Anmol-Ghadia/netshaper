@@ -5,6 +5,7 @@
 #include "ShapedServer.h"
 #include <utility>
 #include <iomanip>
+#include <chrono>
 
 ShapedServer::ShapedServer(config::Peer2Config &peer2Config) :
     dummyStreamID(QUIC_UINT62_MAX) {
@@ -299,7 +300,24 @@ void ShapedServer::receivedShapedData(MsQuicStream *stream,
 
   auto fromShaped = (*streamToQueues)[stream].fromShaped;
   mapLock.unlock_shared();
-  while (fromShaped->push(buffer, length) == -1) {
+
+	uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
+		(std::chrono::steady_clock::now().time_since_epoch()).count();
+
+	uint8_t* tsBuffer = (uint8_t*) malloc(length + sizeof(uint64_t));
+	if (tsBuffer == nullptr) {
+		log(ERROR, "allocating buffer for received shapped data (T3)");
+		return;
+	}
+	std::memcpy(tsBuffer, buffer, length);
+
+	if (length == 24) {	// T3
+		//log(ERROR, "adding timestamp T3");
+		std::memcpy(tsBuffer + length, &ts, sizeof(uint64_t));
+		length += sizeof(uint64_t);
+	}
+
+  while (fromShaped->push(tsBuffer, length) == -1) {
     log(WARNING, "(fromShaped) " + std::to_string(fromShaped->ID) +
                  " is full, waiting for it to be empty");
 #ifdef SHAPING
@@ -361,11 +379,27 @@ std::vector<PreparedBuffer> ShapedServer::prepareData(size_t dataSize) {
     // We have sent enough
     if (dataSize == 0) break;
     auto sizeToSendFromQueue = std::min(queueSize, dataSize);
+    //log(ERROR, "sending some data of size: " + std::to_string(sizeToSendFromQueue));
+
+	uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
+		(std::chrono::steady_clock::now().time_since_epoch()).count();
+
+	auto totalSize = sizeToSendFromQueue;
+
+	if (sizeToSendFromQueue == 48) {	// T6
+		//log(ERROR, "adding timestamp T6");
+		totalSize += sizeof(uint64_t);
+	}
+
     auto buffer =
-        reinterpret_cast<uint8_t *>(malloc(sizeToSendFromQueue + 1));
+        reinterpret_cast<uint8_t *>(malloc(totalSize + 1));
     if (buffer == nullptr) continue;
     queues.toShaped->pop(buffer, sizeToSendFromQueue);
-    preparedBuffers.push_back({stream, buffer, sizeToSendFromQueue});
+    if (totalSize != sizeToSendFromQueue) {
+	    std::memcpy(buffer + sizeToSendFromQueue, &ts, sizeof(uint64_t));
+    }
+
+    preparedBuffers.push_back({stream, buffer, totalSize});
   }
   return preparedBuffers;
 }
