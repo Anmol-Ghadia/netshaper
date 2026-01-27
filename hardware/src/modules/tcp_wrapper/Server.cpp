@@ -204,9 +204,9 @@ namespace TCP {
 #ifdef DEBUGGING
       log(DEBUG, "Data received on socket " + std::to_string(socket));
 #endif
-      log(ERROR, "Data received on socket " + std::to_string(socket) + " of size: " + std::to_string(bytesReceived));
-	if (bytesReceived == 8) {
-      log(ERROR, "adding timestamp");
+      //log(ERROR, "Data received on socket " + std::to_string(socket) + " of size: " + std::to_string(bytesReceived));
+	if (bytesReceived == 8) {   // T1
+      // log(ERROR, "adding timestamp T1");
 		std::memcpy(buffer + bytesReceived, &ts, sizeof(uint64_t));
         bytesReceived += sizeof(uint64_t);
 	}
@@ -234,8 +234,8 @@ namespace TCP {
     uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
 	    (std::chrono::steady_clock::now().time_since_epoch()).count();
 
-	if (length == 16) {
-      log(ERROR, "adding timestamp");
+	if (length == 64) {     // T8
+      //log(ERROR, "adding timestamp T8");
 		std::memcpy(buffer + length, &ts, sizeof(uint64_t));
         length += sizeof(uint64_t);
 	}

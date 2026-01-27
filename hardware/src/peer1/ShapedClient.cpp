@@ -226,10 +226,25 @@ std::vector<PreparedBuffer> ShapedClient::prepareData(size_t dataSize) {
     }
     if (dataSize == 0) break;
     auto sizeToSend = std::min(dataSize, queueSize);
-    auto buffer = reinterpret_cast<uint8_t *>(malloc(sizeToSend));
+
+        uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
+                    (std::chrono::steady_clock::now().time_since_epoch()).count();
+
+        auto totalSize = sizeToSend;
+
+        if (sizeToSend == 16) { // T2
+            // log(ERROR, "adding timestamp T2");
+            totalSize += sizeof(uint64_t);
+        }
+
+    auto buffer = reinterpret_cast<uint8_t *>(malloc(totalSize));
     if (buffer == nullptr) continue;
     queues.toShaped->pop(buffer, sizeToSend);
-    preparedBuffers.push_back({stream, buffer, sizeToSend});
+    if (totalSize != sizeToSend) {
+        std::memcpy(buffer + sizeToSend, &ts, sizeof(uint64_t));
+    }
+
+    preparedBuffers.push_back({stream, buffer, totalSize});
     dataSize -= sizeToSend;
   }
   return preparedBuffers;
@@ -282,7 +297,24 @@ ShapedClient::receivedShapedData(MsQuicStream *stream, uint8_t *buffer,
                std::to_string((*streamToID)[stream]));
     return;
   }
-  while (fromShaped->push(buffer, length) == -1) {
+
+    uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
+        (std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    uint8_t* tsBuffer = (uint8_t*) malloc(length + sizeof(uint64_t));
+    if (tsBuffer == nullptr) {
+        log(ERROR, "allocating buffer for received shapped data (T7)");
+        return;
+    }
+    std::memcpy(tsBuffer, buffer, length);
+
+    if (length == 56) {     // T7
+        // log(ERROR, "adding timestamp T7");
+        std::memcpy(tsBuffer + length, &ts, sizeof(uint64_t));
+        length += sizeof(uint64_t);
+    }
+
+  while (fromShaped->push(tsBuffer, length) == -1) {
     log(WARNING, "(fromShaped) " + std::to_string(fromShaped->ID) +
                  +" mapped to stream " + std::to_string((*streamToID)[stream]) +
                  " is full, waiting for it to be empty!");
