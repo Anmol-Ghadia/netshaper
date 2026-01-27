@@ -11,6 +11,7 @@
 #include <thread>
 #include <cstring>
 #include <iomanip>
+#include <chrono>
 
 namespace TCP {
   Server::Server(std::string bindAddr, int localPort,
@@ -193,12 +194,22 @@ namespace TCP {
   void Server::receiveData(int socket, std::string &clientAddress) {
     ssize_t bytesReceived;  // Number of bytes received
     uint8_t buffer[BUF_SIZE];
+    uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
+	    (std::chrono::steady_clock::now().time_since_epoch()).count();
 
     // Read from fromSocket and send to toSocket
     while ((bytesReceived = recv(socket, buffer, BUF_SIZE, 0)) > 0) {
 #ifdef DEBUGGING
       log(DEBUG, "Data received on socket " + std::to_string(socket));
 #endif
+      log(ERROR, "Data received on socket " + std::to_string(socket) + " of size: " + std::to_string(bytesReceived));
+	if (bytesReceived == 8) {
+      log(ERROR, "adding timestamp");
+		bytesReceived += 8;	// single timestamp
+		uint8_t *endOfBuffer = &buffer[8];
+		std::memset(endOfBuffer, ts, 8);
+	}
+
       onReceive(socket, clientAddress, buffer, bytesReceived, ONGOING);
     }
 
