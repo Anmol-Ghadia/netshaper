@@ -194,20 +194,21 @@ namespace TCP {
   void Server::receiveData(int socket, std::string &clientAddress) {
     ssize_t bytesReceived;  // Number of bytes received
     uint8_t buffer[BUF_SIZE];
-    uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
-	    (std::chrono::steady_clock::now().time_since_epoch()).count();
 
     // Read from fromSocket and send to toSocket
     while ((bytesReceived = recv(socket, buffer, BUF_SIZE, 0)) > 0) {
+
+    uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
+	    (std::chrono::steady_clock::now().time_since_epoch()).count();
+
 #ifdef DEBUGGING
       log(DEBUG, "Data received on socket " + std::to_string(socket));
 #endif
       log(ERROR, "Data received on socket " + std::to_string(socket) + " of size: " + std::to_string(bytesReceived));
 	if (bytesReceived == 8) {
       log(ERROR, "adding timestamp");
-		bytesReceived += 8;	// single timestamp
-		uint8_t *endOfBuffer = &buffer[8];
-		std::memset(endOfBuffer, ts, 8);
+		std::memcpy(buffer + bytesReceived, &ts, sizeof(uint64_t));
+        bytesReceived += sizeof(uint64_t);
 	}
 
       onReceive(socket, clientAddress, buffer, bytesReceived, ONGOING);
@@ -229,6 +230,16 @@ namespace TCP {
 #ifdef DEBUGGING
     log(DEBUG, "Sending data on socket " + std::to_string(toSocket));
 #endif
+
+    uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
+	    (std::chrono::steady_clock::now().time_since_epoch()).count();
+
+	if (length == 16) {
+      log(ERROR, "adding timestamp");
+		std::memcpy(buffer + length, &ts, sizeof(uint64_t));
+        length += sizeof(uint64_t);
+	}
+
     auto bytesSent = send(toSocket, buffer, length, 0);
     return bytesSent;
   }

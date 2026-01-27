@@ -12,6 +12,7 @@
 #include <thread>
 #include <cstring>
 #include <iomanip>
+#include <chrono>
 
 namespace TCP {
   Client::Client(const std::string &remoteHost, int remotePort,
@@ -105,11 +106,23 @@ namespace TCP {
 
     // Read from fromSocket and send to toSocket
     while ((bytesReceived = recv(remoteSocket, buffer, BUF_SIZE, 0)) > 0) {
+
+    uint64_t ts = std::chrono::duration_cast<std::chrono::nanoseconds>
+        (std::chrono::steady_clock::now().time_since_epoch()).count();
+
 #ifdef DEBUGGING
       std::stringstream ss;
       ss << "Received data on socket: " << remoteSocket;
       log(DEBUG, ss.str());
 #endif
+    log(ERROR, "Data received on socket " + std::to_string(remoteSocket) + " of size: " + std::to_string(bytesReceived));
+    if (bytesReceived == 16) {
+        log(ERROR, "adding timestamp");
+        bytesReceived += 8;     // single timestamp
+        uint8_t *endOfBuffer = &buffer[8];
+        std::memset(endOfBuffer, ts, 8);
+    }
+
       onReceive(this, buffer, bytesReceived, ONGOING);
     }
 
