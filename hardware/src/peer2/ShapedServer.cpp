@@ -366,6 +366,7 @@ std::vector<PreparedBuffer> ShapedServer::prepareData(size_t dataSize) {
     if (buffer == nullptr) continue;
     queues.toShaped->pop(buffer, sizeToSendFromQueue);
     preparedBuffers.push_back({stream, buffer, sizeToSendFromQueue});
+    dataSize -= sizeToSendFromQueue;
   }
   return preparedBuffers;
 }
