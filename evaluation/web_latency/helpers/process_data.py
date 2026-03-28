@@ -46,8 +46,16 @@ def get_csv_files(interval_dir):
 
 def get_latency_stats(latencies):
     mean = np.mean(latencies)
-    std = np.std(latencies)
-    return mean, std
+    #print(mean)
+    #std = np.quantile(latencies, [0.1, 0.9])
+    q10 = np.quantile(latencies, 0.1)
+    q25 = np.quantile(latencies, 0.25)
+    q75 = np.quantile(latencies, 0.75)
+    q90 = np.quantile(latencies, 0.9)
+    #print(f"\t\t{mean-q10}| {q90-mean}")
+    #std = [mean-q10, q90-mean]
+    #print(f"\t --> {std}")
+    return mean, mean-q10, mean-q25, q75-mean, q90-mean
 
 
 def main():
@@ -71,7 +79,15 @@ def main():
     
     
     
-    processed_data = {"client_num":[], "dp_intevals": [], "mean": [], "std": []}
+    processed_data = {
+        "client_num":[],
+        "dp_intevals": [],
+        "mean": [],
+        "q10": [],
+        "q25": [],
+        "q75": [],
+        "q90": []
+    }
     
     client_nums = get_clients_list(results_dir) 
     for client_num in client_nums:
@@ -102,12 +118,15 @@ def main():
                     # change the actual time values from string to int
                     latencies = latencies + list(client_df[f' actual_time {i}'] ) 
             # print(latencies)
-            mean, std = get_latency_stats(latencies)
+            mean, q10, q25, q75, q90 = get_latency_stats(latencies)
 
             processed_data["dp_intevals"].append(dp_interval)
             processed_data["client_num"].append(client_num)
             processed_data["mean"].append(mean)
-            processed_data["std"].append(std)
+            processed_data["q10"].append(q10)
+            processed_data["q25"].append(q25)
+            processed_data["q75"].append(q75)
+            processed_data["q90"].append(q90)
    
     # print(processed_data)
     # Saving the processed data in the same results directory as a pickle file

@@ -12,9 +12,9 @@ import argparse
 
 def sort_x_based_on_y(x, y): 
 
-    x_sorted_indices = np.argsort(x)
-    x_sorted = np.array(x)[x_sorted_indices]
-    y_sorted = np.array(y)[x_sorted_indices]
+    y_sorted_indices = np.argsort(y)
+    x_sorted = np.array(x)[y_sorted_indices]
+    y_sorted = np.array(y)[y_sorted_indices]
     return x_sorted, y_sorted
 def all_params_match(data, params, i):
     for key in params.keys():
@@ -44,13 +44,24 @@ def plot_latency_vs_dp_interval(data, results_dir):
     for client_num in client_nums:
         fixed_params = {"client_num": client_num}        
         filtered_data = filter_data_based_on_params(data, fixed_params)
-        dp_intervals = np.array(filtered_data["dp_intevals"])/1e3
+        dp_intervals_original = np.array(filtered_data["dp_intevals"])/1e3
         mean = np.array(filtered_data["mean"])/1e3
-        std = np.array(filtered_data["std"])/1e3
+        #std = np.array(filtered_data["std"])/1e3
+        q10 = np.array(filtered_data["q10"])/1e3
+        q25 = np.array(filtered_data["q25"])/1e3
+        q75 = np.array(filtered_data["q75"])/1e3
+        q90 = np.array(filtered_data["q90"])/1e3
         
-        mean, dp_intervals = sort_x_based_on_y(mean, dp_intervals)
+        mean, dp_intervals = sort_x_based_on_y(mean, dp_intervals_original)
+        q10, _ = sort_x_based_on_y(q10, dp_intervals_original)
+        q25, _ = sort_x_based_on_y(q25, dp_intervals_original)
+        q75, _ = sort_x_based_on_y(q75, dp_intervals_original)
+        q90, _ = sort_x_based_on_y(q90, dp_intervals_original)
+        #print(f"\t\t{client_num=},\n\t\t{dp_intervals=},\n\t\t{q10=},\n\t\t{q90=}")
         plt.plot(dp_intervals, mean, label=f"{client_num} clients", markersize=8, marker=markers[ind], color=colors[ind])
-        plt.errorbar(dp_intervals, mean, yerr=std, capsize=3, color=colors[ind], linestyle='None')
+        #print(f"\t\t\t{q10=}{q90=}")
+        plt.errorbar(dp_intervals, mean, yerr=[q25, q75], capsize=5, color=colors[ind], linestyle='None')
+        plt.errorbar(dp_intervals, mean, yerr=[q10, q90], capsize=0, color=colors[ind], linestyle='None')
         ind += 1 
     plt.legend(framealpha=0, handlelength=1, fontsize=12, ncol=1)
     plt.xlabel('DP interval, $T$ (ms)')
