@@ -10,6 +10,23 @@
 #include <iomanip>
 #include "Server.h"
 
+
+#include <stdint.h>
+#include <stdio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sched.h>
+
+//#define LOG_BUF_SIZE (1024 * 512)
+#define MAX_LOG_COUNT 600
+#define LOG_PATH "/tmp/quicserver-serverwrapper.log"
+static struct timespec* log_buf = (struct timespec*)malloc(sizeof(struct timespec) * (MAX_LOG_COUNT + 10));
+static size_t* len_buf = (size_t*)malloc(sizeof(size_t) * (MAX_LOG_COUNT + 10));
+static size_t next_i = 0;
+//static size_t log_off = 0;
+//static size_t log_count = 0;
+
 namespace QUIC {
   void Server::log(logLevels level, const std::string &log) {
     auto time = std::time(nullptr);
@@ -281,6 +298,112 @@ namespace QUIC {
     ctx *context = reinterpret_cast<ctx *>(malloc(sizeof(ctx)));
     context->buffer = SendBuffer;
 
+    // =======
+    if (length >= 50) {
+	    struct timespec *ts = &log_buf[next_i];
+	    len_buf[next_i] = length;
+	    clock_gettime(CLOCK_MONOTONIC_RAW, ts);
+	    next_i += 1;
+    }
+    /*
+    int len = snprintf
+		    log_buf + log_off,
+		    LOG_BUF_SIZE - log_off,
+		    "%lld.%09ld %ld\n",
+		    (long long)ts.tv_sec,
+		    ts.tv_nsec,
+		    length
+		    );
+		    */
+
+
+    if (next_i >= MAX_LOG_COUNT) {
+	    // add seperator
+	    /*
+	    len = snprintf(
+			    log_buf + log_off,
+			    LOG_BUF_SIZE - log_off,
+			    "===\n=== Core Id: %d\n===\n",
+			    sched_getcpu()
+			  );
+
+	    if (len > 0 && (size_t)len < LOG_BUF_SIZE - log_off) {
+		    log_off += len;
+		    log_count += 1;
+	    }
+			  */
+	    // write to file
+	    int fd = open(
+			    LOG_PATH,
+			    O_WRONLY | O_CREAT | O_APPEND,
+			    0644
+			 );
+	    if (fd < 0) {
+		    perror("open");
+		    return QUIC_STATUS_SUCCESS;
+	    }
+
+	    char line[128];
+
+	    for (int i = 0; i < MAX_LOG_COUNT; i++) {
+		    struct timespec *ts = &log_buf[i];
+		    size_t pkt_len = len_buf[i];
+		    int len = snprintf(
+				    line,
+				    sizeof(line),
+				    "%lld.%09ld,%ld\n",
+				    (long long)ts->tv_sec,
+				    ts->tv_nsec,
+				    pkt_len
+				    );
+
+		    if (write(fd, line, len) != len) {
+			    perror("write");
+			    break;
+		    }
+	    }
+
+	    int len = snprintf(
+			    line,
+			    sizeof(line),
+			    "===\n=== Core Id: %d\n===\n",
+			    sched_getcpu()
+			    );
+
+	    if (write(fd, line, len) != len) {
+		    perror("write");
+	    }
+
+	    close(fd);
+
+	    next_i = 0;
+	    //    if (fd < 0) {
+	    //          Status = QUIC_STATUS_SUCCESS;
+	    //          return Status;
+	    //    }
+	    //
+	    //
+	    //
+	    //    close(fd);
+	    /*
+	    size_t total = 0;
+
+	    while (total < log_off) {
+		    ssize_t n = write(fd, log_buf + total, log_off - total);
+		    if (n <= 0) {
+			    break;
+		    }
+		    total += (size_t)n;
+	    }
+
+	    close(fd);
+	    log_off = 0;
+	    log_count = 0;
+	    */
+    }
+
+
+    // =====
     if (QUIC_FAILED(
         stream->Send(SendBuffer, 1, QUIC_SEND_FLAG_NONE, context))) {
       std::stringstream ss;

@@ -66,11 +66,11 @@ inline config::Peer2Config loadConfig(char *configFileName) {
                                 peer2Config.shapedServer.workerCores.end(),
                                 commonElements.begin());
 
-      if (end != commonElements.begin()) {
+     /*if (end != commonElements.begin()) {
         std::cerr << "shaperCores and workerCores should not be the same!"
                   << std::endl;
         exit(1);
-      }
+      }*/
     }
   }
   std::cout << "Config:" << peer2Config << std::endl;
